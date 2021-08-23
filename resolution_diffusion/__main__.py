@@ -88,28 +88,45 @@ class Model(torch.jit.ScriptModule):
         self.incremental_scale = incremental_scale
         self._forward_shared = torch.nn.Sequential(
             torch.nn.Conv2d(1, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(0.1),
+            torch.nn.LeakyReLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(0.1),
+            torch.nn.LeakyReLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(0.1),
+            torch.nn.LeakyReLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
         )
         self._forward_mu = torch.nn.Sequential(
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(0.1),
+            torch.nn.Tanh(),
             torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
-            torch.nn.Tanh(),
+        )
+        torch.nn.init.constant_(
+            self._forward_mu[-1].bias,
+            val=0.0,
+        )
+        torch.nn.init.normal_(
+            self._forward_mu[-1].weight,
+            mean=0.0,
+            std=1e-3 / np.sqrt(num_latent_features),
         )
         self._forward_sd = torch.nn.Sequential(
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(0.1),
+            torch.nn.Tanh(),
             torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
             torch.nn.Softplus(),
+        )
+        torch.nn.init.constant_(
+            self._forward_sd[-2].bias,
+            val=np.log(1e-1),
+        )
+        torch.nn.init.normal_(
+            self._forward_sd[-2].weight,
+            mean=0.0,
+            std=1e-3 / np.sqrt(num_latent_features),
         )
 
     def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
@@ -117,7 +134,7 @@ class Model(torch.jit.ScriptModule):
         shared = self._forward_shared(x)
         mu = x + self._forward_mu(shared)
         sd = self._forward_sd(shared)
-        return Normal(torch.tanh(mu), 1e-2 + sd)
+        return Normal(mu, 1e-4 + sd)
 
 
 def main():
