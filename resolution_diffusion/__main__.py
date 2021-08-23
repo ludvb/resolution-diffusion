@@ -104,11 +104,7 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
-        )
-        torch.nn.init.constant_(
-            self._forward_mu[-1].bias,
-            val=0.0,
+            torch.nn.Conv2d(num_latent_features, 1, 3, padding=1, bias=False),
         )
         torch.nn.init.normal_(
             self._forward_mu[-1].weight,
