@@ -257,7 +257,7 @@ def main():
                 viz_samples[sample_idxs],
                 [x // 2 + 1 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
                 mode="constant",
-                value=-1,
+                value=0.0,
             )
         ]
         cur_scale_factor = 1.0
