@@ -92,18 +92,18 @@ class Model(torch.jit.ScriptModule):
         self._forward_shared = torch.nn.Sequential(
             torch.nn.Conv2d(1, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            # torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            # torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            # torch.nn.BatchNorm2d(num_latent_features),
         )
         self._forward_mu = torch.nn.Sequential(
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            # torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, 1, 3, padding=1, bias=False),
         )
         torch.nn.init.normal_(
@@ -114,7 +114,7 @@ class Model(torch.jit.ScriptModule):
         self._forward_sd = torch.nn.Sequential(
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            # torch.nn.BatchNorm2d(num_latent_features),
             torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
             torch.nn.Softplus(),
         )
