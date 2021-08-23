@@ -110,7 +110,7 @@ class Model(torch.jit.ScriptModule):
         torch.nn.init.normal_(
             self._forward_mu[-1].weight,
             mean=0.0,
-            std=1e-3 / np.sqrt(num_latent_features),
+            std=1e-1 / np.sqrt(num_latent_features),
         )
         self._forward_sd = torch.nn.Sequential(
             torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
@@ -121,20 +121,20 @@ class Model(torch.jit.ScriptModule):
         )
         torch.nn.init.constant_(
             self._forward_sd[-2].bias,
-            val=np.log(1e-1),
+            val=0.0,
         )
         torch.nn.init.normal_(
             self._forward_sd[-2].weight,
             mean=0.0,
-            std=1e-3 / np.sqrt(num_latent_features),
+            std=1e-1 / np.sqrt(num_latent_features),
         )
 
     def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
         x = interpolate(x, self.incremental_scale)
         shared = self._forward_shared(x)
         mu = x + self._forward_mu(shared)
-        sd = self._forward_sd(shared)
-        return Normal(mu, 1e-4 + sd)
+        sd = self._forward_sd(shared).clamp_min(1e-3)
+        return Normal(mu, sd)
 
 
 def main():
