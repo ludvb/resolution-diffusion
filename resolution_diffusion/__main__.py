@@ -194,7 +194,7 @@ def main():
 
     model = Model(incremental_scale=incremental_scale)
     model = model.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optim = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     if options.checkpoint is not None:
         logging.info("Loading checkpoint: %s", options.checkpoint)
