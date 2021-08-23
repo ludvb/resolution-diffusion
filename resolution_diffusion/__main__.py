@@ -270,12 +270,20 @@ def main():
                 value=0.0,
             )
         ]
+        mask = torch.nn.functional.pad(
+            torch.ones_like(viz_samples[sample_idxs]),
+            [x // 2 + 1 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
+            mode="constant",
+            value=0.0,
+        )
         cur_scale_factor = 1.0
         while cur_scale_factor < 2.0:
             cur_scale_factor *= incremental_scale
+            mask = interpolate(mask, scale_factor=incremental_scale)
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
+            x[~mask] = 0.0
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
