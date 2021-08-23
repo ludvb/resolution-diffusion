@@ -22,7 +22,9 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 def first_unique_filename(x):
     return next(
         x
-        for x in (x + suffix for suffix in it.chain("", (f"{i}" for i in it.count(1))))
+        for x in (
+            x + suffix for suffix in it.chain([""], (f".{i}" for i in it.count(1)))
+        )
         if not os.path.exists(x)
     )
 
