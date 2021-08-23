@@ -178,9 +178,9 @@ def main():
             transform=image_transforms.Compose(
                 [
                     image_transforms.ToTensor(),
-                    # image_transforms.Normalize(
-                    #     mean=torch.tensor([0.5]), std=torch.tensor([0.5])
-                    # ),
+                    image_transforms.Normalize(
+                        mean=torch.tensor([0.5]), std=torch.tensor([0.5])
+                    ),
                 ]
             ),
         )
@@ -216,7 +216,7 @@ def main():
     viz_samples = torch.stack(
         [dataset[i][0] for i in np.random.choice(len(dataset), size=1024)]
     )
-    epdf_interp = interpolate_samples(viz_samples, scale_factors, padding_mode="border")
+    epdf_interp = interpolate_samples(viz_samples, scale_factors, padding_mode="zeros")
     epdf_masks = interpolate_samples(
         torch.ones_like(viz_samples), scale_factors, padding_mode="zeros"
     )
@@ -247,10 +247,11 @@ def main():
         for mask in epdf_masks[:-1, sample_idxs].flip(0):
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
-            x = x.clamp(0.0, 1.0)
+            x = x.clamp(-1.0, 1.0)
             x[~mask] = 0.0
             samples.append(x)
         samples = torch.stack(samples)
+        samples = (samples + 1.0) / 2
         summary_writer.add_image(
             "samples/generative",
             make_grid(
@@ -274,9 +275,10 @@ def main():
             cur_scale_factor *= incremental_scale
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
-            x = x.clamp(0.0, 1.0)
+            x = x.clamp(-1.0, 1.0)
             samples.append(x)
         samples = torch.stack(samples)
+        samples = (samples + 1.0) / 2
         summary_writer.add_image(
             "samples/super-resolution",
             make_grid(
@@ -295,7 +297,7 @@ def main():
             x = x.to(device=device)
             data_masks = torch.ones_like(x)
 
-            x = interpolate_samples(x, scale_factors, padding_mode="border")
+            x = interpolate_samples(x, scale_factors, padding_mode="zeros")
             data_masks = interpolate_samples(
                 data_masks, scale_factors, padding_mode="zeros"
             )
