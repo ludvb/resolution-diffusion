@@ -283,7 +283,7 @@ def main():
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~mask] = 0.0
+            x[~mask.bool()] = 0.0
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
