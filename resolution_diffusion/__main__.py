@@ -1,8 +1,9 @@
+import argparse
 import os
 import itertools as it
+import logging
+import sys
 from datetime import datetime
-from numbers import Number
-from typing import Optional
 
 import numpy as np
 import torch
@@ -14,35 +15,15 @@ from torchvision.datasets import MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-
-dataset = MNIST(
-    "./data",
-    train=True,
-    download=True,
-    transform=image_transforms.Compose(
-        [
-            image_transforms.ToTensor(),
-            image_transforms.Normalize(
-                mean=torch.tensor([0.5]), std=torch.tensor([0.5])
-            ),
-        ]
-    ),
-)
-dataloader = DataLoader(
-    dataset,
-    batch_size=32,
-    drop_last=True,
-    num_workers=len(os.sched_getaffinity(0)),
-    persistent_workers=True,
-    shuffle=True,
-)
-
-incremental_scale = 1.25
-data_dim = np.max(next(iter(dataloader))[0].shape[2:])
-num_steps = int(np.ceil(np.log(data_dim / 2) / np.log(incremental_scale))) + 1
-scale_factors = [1 / incremental_scale ** k for k in range(0, num_steps)]
-
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
+def first_unique_filename(x):
+    return next(
+        x
+        for x in (x + suffix for suffix in it.chain("", (f"{i}" for i in it.count(1))))
+        if not os.path.exists(x)
+    )
 
 
 @torch.jit.script
@@ -72,119 +53,229 @@ def center_align(
 
 
 @torch.jit.script
+def interpolate(
+    x: torch.Tensor,
+    scale_factor: float,
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+):
+    transform = (1 / scale_factor) * torch.eye(3, device=x.device)[:2]
+    grid = torch.nn.functional.affine_grid(
+        transform.expand(x.shape[0], -1, -1),
+        size=x.shape,
+        align_corners=False,
+    )
+    return torch.nn.functional.grid_sample(
+        x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
+    )
+
+
+@torch.jit.script
 def interpolate_samples(
     x: torch.Tensor,
     scale_factors: list[float],
-    pad_value: float = 0.0,
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
 ) -> torch.Tensor:
-    return center_align(
-        [
-            torch.nn.functional.interpolate(
-                x,
-                scale_factor=[k, k],
-                mode="bilinear",
-                align_corners=False,
-                recompute_scale_factor=False,
-            )
-            for k in scale_factors
-        ],
-        target_shape=list(x.shape),
-        pad_value=pad_value,
+    return torch.stack(
+        [interpolate(x, k, mode=mode, padding_mode=padding_mode) for k in scale_factors]
     )
 
 
 class Model(torch.jit.ScriptModule):
-    def __init__(self, incremental_scale: float):
+    def __init__(self, incremental_scale: float, num_latent_features: int = 24):
         super().__init__()
         self.incremental_scale = incremental_scale
-        self._forward = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 8, 3, padding=1),
+        self._forward_shared = torch.nn.Sequential(
+            torch.nn.Conv2d(1, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(0.1),
-            torch.nn.BatchNorm2d(8),
-            torch.nn.Conv2d(8, 8, 3, padding=1),
+            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(0.1),
-            torch.nn.BatchNorm2d(8),
-            torch.nn.Conv2d(8, 8, 3, padding=1),
+            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
             torch.nn.LeakyReLU(0.1),
-            torch.nn.BatchNorm2d(8),
-            torch.nn.Conv2d(8, 2, 3, padding=1),
+            torch.nn.BatchNorm2d(num_latent_features),
+        )
+        self._forward_mu = torch.nn.Sequential(
+            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
+            torch.nn.LeakyReLU(0.1),
+            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
+            torch.nn.Tanh(),
+        )
+        self._forward_sd = torch.nn.Sequential(
+            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
+            torch.nn.LeakyReLU(0.1),
+            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
+            torch.nn.Softplus(),
         )
 
-    def forward(
-        self, x: torch.Tensor, keep_dims: bool = True
-    ) -> torch.distributions.Distribution:
-        y = torch.nn.functional.interpolate(
-            x,
-            scale_factor=[self.incremental_scale, self.incremental_scale],
-            mode="bilinear",
-            align_corners=False,
-            recompute_scale_factor=False,
-        )
-        if keep_dims:
-            y = view_center(y, x.shape)
-        y = self._forward(y)
-        mu = y[:, : y.shape[1] // 2]
-        sd = y[:, y.shape[1] // 2 :]
-        return Normal(torch.tanh(mu), 1e-2 + torch.nn.functional.softplus(sd))
+    def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
+        x = interpolate(x, self.incremental_scale)
+        shared = self._forward_shared(x)
+        mu = x + self._forward_mu(shared)
+        sd = self._forward_sd(shared)
+        return Normal(torch.tanh(mu), 1e-2 + sd)
 
 
 def main():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--checkpoint", type=str)
+    argparser.add_argument("--incremental-scale", type=float, default=1.25)
+    argparser.add_argument("--dataset", type=str, default="MNIST")
+    argparser.add_argument("--batch-size", type=int, default=32)
+    argparser.add_argument(
+        "--save-path",
+        type=str,
+        default=f"./resolution-diffusion-{datetime.now().isoformat()}",
+    )
+    options = argparser.parse_args()
+
+    os.makedirs(os.path.join(options.save_path, "checkpoints"), exist_ok=True)
+    os.makedirs(os.path.join(options.save_path, "tb"), exist_ok=True)
+    logging.basicConfig(
+        filename=first_unique_filename(os.path.join(options.save_path, "log")),
+        level=logging.DEBUG,
+        format="[%(asctime)s]  (%(levelname)s)  %(message)s",
+        encoding="utf-8",
+    )
+
+    logging.info(" ".join(sys.argv))
+
+    if options.dataset.lower() == "mnist":
+        dataset = MNIST(
+            "./data",
+            train=True,
+            download=True,
+            transform=image_transforms.Compose(
+                [
+                    image_transforms.ToTensor(),
+                    image_transforms.Normalize(
+                        mean=torch.tensor([0.5]), std=torch.tensor([0.5])
+                    ),
+                ]
+            ),
+        )
+    else:
+        raise RuntimeError(f'Unknown dataset "{options.dataset}"')
+
+    dataloader = DataLoader(
+        dataset,
+        batch_size=options.batch_size,
+        drop_last=True,
+        num_workers=len(os.sched_getaffinity(0)),
+        persistent_workers=True,
+        shuffle=True,
+    )
+
+    incremental_scale = options.incremental_scale
+    data_dim = np.max(next(iter(dataloader))[0].shape[2:])
+    num_steps = int(np.ceil(np.log(data_dim) / np.log(incremental_scale)))
+    scale_factors = [1 / incremental_scale ** k for k in range(0, num_steps)]
+
     model = Model(incremental_scale=incremental_scale)
     model = model.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=5e-4)
+    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    summary_writer = SummaryWriter(
-        f"/tmp/resolution-diffusion/{datetime.now().isoformat()}"
-    )
+    if options.checkpoint is not None:
+        logging.info("Loading checkpoint: %s", options.checkpoint)
+        checkpoint = torch.load(options.checkpoint)
+        model.load_state_dict(checkpoint["model"])
+        optim.load_state_dict(checkpoint["optim"])
 
-    epdf = torch.stack(
+    summary_writer = SummaryWriter(os.path.join(options.save_path, "tb"))
+
+    viz_samples = torch.stack(
         [dataset[i][0] for i in np.random.choice(len(dataset), size=1024)]
     )
-    epdf_interp = interpolate_samples(epdf, scale_factors, pad_value=-1.0)
+    epdf_interp = interpolate_samples(viz_samples, scale_factors, padding_mode="border")
     epdf_masks = interpolate_samples(
-        torch.ones_like(epdf),
-        scale_factors,
+        torch.ones_like(viz_samples), scale_factors, padding_mode="zeros"
     )
     epdf_masks = epdf_masks.bool()
     assert (
-        len(np.unique(epdf[0], axis=0)) < 64
+        len(np.unique(epdf_interp[-1], axis=0)) < 64
     ), "Lowest resolution is not densely sampled"
 
     global_step = 0
     for epoch in it.count(1):
-        model.train(False)
-        sample_idxs = np.random.choice(epdf.size(1), size=8)
+        torch.save(
+            {"model": model.state_dict(), "optim": optim.state_dict()},
+            first_unique_filename(
+                os.path.join(options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl")
+            ),
+        )
+
+        ## Visualization
+        model.eval()
+        rng_state = torch.get_rng_state()
+        np.random.seed(0)
+        torch.manual_seed(0)
+
+        sample_idxs = np.random.choice(epdf_interp.size(1), size=8)
+
+        # Sampling
         samples = [epdf_interp[-1, sample_idxs]]
         for mask in epdf_masks[:-1, sample_idxs].flip(0):
             with torch.no_grad():
-                x = model(samples[-1].to(device), keep_dims=True).sample().cpu()
+                x = model(samples[-1].to(device)).sample().cpu()
             x = x * mask
             samples.append(x)
-        samples = center_align(
-            samples, target_shape=np.max([x.shape for x in samples], axis=0)
-        )
-        samples = samples.transpose(-2, -1)
+        samples = torch.stack(samples)
         summary_writer.add_image(
-            "samples",
-            make_grid(samples.reshape(-1, *samples.shape[2:]), nrow=samples.shape[1]),
+            "samples/generative",
+            make_grid(
+                samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
+                nrow=samples.shape[0],
+            ),
             global_step=global_step,
         )
 
-        model.train(True)
+        # Super resolution
+        samples = [
+            torch.nn.functional.pad(
+                viz_samples[sample_idxs],
+                [x // 2 + 1 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
+                mode="constant",
+                value=-1,
+            )
+        ]
+        cur_scale_factor = 1.0
+        while cur_scale_factor < 2.0:
+            cur_scale_factor *= incremental_scale
+            with torch.no_grad():
+                x = model(samples[-1].to(device)).sample().cpu()
+            samples.append(x)
+        samples = torch.stack(samples)
+        summary_writer.add_image(
+            "samples/super-resolution",
+            make_grid(
+                samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
+                nrow=samples.shape[0],
+            ),
+            global_step=global_step,
+        )
+
+        ## Trainig loop
+        model.train()
+        torch.set_rng_state(rng_state)
         losses = []
         progress = tqdm(dataloader)
         for x, _ in progress:
             x = x.to(device=device)
             data_masks = torch.ones_like(x)
 
-            x = interpolate_samples(x, scale_factors)
-            data_masks = interpolate_samples(data_masks, scale_factors)
+            x = interpolate_samples(x, scale_factors, padding_mode="border")
+            data_masks = interpolate_samples(
+                data_masks, scale_factors, padding_mode="zeros"
+            )
 
-            y = model(x[1:].reshape(-1, *x.shape[2:]), keep_dims=True)
+            y = model(x[1:].reshape(-1, *x.shape[2:]))
             lp = y.log_prob(x[:-1].reshape(-1, *x.shape[2:]))
             lp = lp * data_masks[:-1].reshape(-1, *data_masks.shape[2:])
-            loss = -lp.sum((1, 2, 3)).mean()
-            # loss = -lp.mean()
+            loss = -lp.sum((1, 2, 3)).mean(0)
 
             optim.zero_grad()
             loss.backward()
@@ -196,7 +287,7 @@ def main():
 
             global_step += 1
 
-        print(
+        logging.info(
             "  //  ".join(
                 [
                     f"EPOCH {epoch:d}",
