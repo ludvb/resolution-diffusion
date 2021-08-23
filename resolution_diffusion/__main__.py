@@ -4,6 +4,7 @@ import itertools as it
 import logging
 import sys
 from datetime import datetime
+from subprocess import run
 
 import numpy as np
 import torch
@@ -159,6 +160,16 @@ def main():
         encoding="utf-8",
     )
 
+    logging.info(
+        "Commit: {}".format(
+            run(
+                ["git", "describe", "--always", "--long", "--dirty"],
+                capture_output=True,
+            )
+            .stdout.decode()
+            .strip()
+        )
+    )
     logging.info(" ".join(sys.argv))
 
     if options.dataset.lower() == "mnist":
