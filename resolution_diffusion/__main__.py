@@ -169,9 +169,9 @@ def main():
             transform=image_transforms.Compose(
                 [
                     image_transforms.ToTensor(),
-                    image_transforms.Normalize(
-                        mean=torch.tensor([0.5]), std=torch.tensor([0.5])
-                    ),
+                    # image_transforms.Normalize(
+                    #     mean=torch.tensor([0.5]), std=torch.tensor([0.5])
+                    # ),
                 ]
             ),
         )
@@ -241,7 +241,7 @@ def main():
             x = x * mask
             samples.append(x)
         samples = torch.stack(samples)
-        samples = ((samples + 1) / 2).clamp(0.0, 1.0)
+        # samples = ((samples + 1) / 2).clamp(0.0, 1.0)
         summary_writer.add_image(
             "samples/generative",
             make_grid(
@@ -267,7 +267,7 @@ def main():
                 x = model(samples[-1].to(device)).sample().cpu()
             samples.append(x)
         samples = torch.stack(samples)
-        samples = ((samples + 1) / 2).clamp(0.0, 1.0)
+        # samples = ((samples + 1) / 2).clamp(0.0, 1.0)
         summary_writer.add_image(
             "samples/super-resolution",
             make_grid(
