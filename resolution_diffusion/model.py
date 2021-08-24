@@ -61,7 +61,7 @@ class UNet(torch.jit.ScriptModule):
             if k in attention_levels:
                 return torch.nn.Sequential(
                     ResidualBlock(_level_features(k)),
-                    SelfAttentionBlock(_level_features(k), _level_features(k) // 2),
+                    SelfAttentionBlock(_level_features(k), _level_features(k)),
                 )
             return ResidualBlock(_level_features(k))
 
