@@ -16,124 +16,10 @@ from torchvision.datasets import MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
+from .common import first_unique_filename, interpolate, interpolate_samples
+from .model import Model
+
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-
-def first_unique_filename(x):
-    return next(
-        x
-        for x in (
-            x + suffix for suffix in it.chain([""], (f".{i}" for i in it.count(1)))
-        )
-        if not os.path.exists(x)
-    )
-
-
-@torch.jit.script
-def view_center(x: torch.Tensor, target_shape: list[int]) -> torch.Tensor:
-    for (i, a), b in zip(list(enumerate(x.shape))[::-1], target_shape[::-1]):
-        x = x.transpose(0, i)
-        x = x[(a - b) // 2 : (a - b) // 2 + b]
-        x = x.transpose(0, i)
-    return x
-
-
-@torch.jit.script
-def center_align(
-    xs: list[torch.Tensor],
-    target_shape: list[int],
-    pad_value: float = 0.0,
-) -> torch.Tensor:
-    ys = []
-    for x in xs:
-        y = torch.full(target_shape, pad_value).to(x)
-        if pad_value is not None:
-            y.fill_(pad_value)
-        ysliced = view_center(y, x.shape)
-        ysliced[...] = x
-        ys.append(y)
-    return torch.stack(ys)
-
-
-@torch.jit.script
-def interpolate(
-    x: torch.Tensor,
-    scale_factor: float,
-    mode: str = "bilinear",
-    padding_mode: str = "zeros",
-):
-    transform = (1 / scale_factor) * torch.eye(3, device=x.device)[:2]
-    grid = torch.nn.functional.affine_grid(
-        transform.expand(x.shape[0], -1, -1),
-        size=x.shape,
-        align_corners=False,
-    )
-    return torch.nn.functional.grid_sample(
-        x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
-    )
-
-
-@torch.jit.script
-def interpolate_samples(
-    x: torch.Tensor,
-    scale_factors: list[float],
-    mode: str = "bilinear",
-    padding_mode: str = "zeros",
-) -> torch.Tensor:
-    return torch.stack(
-        [interpolate(x, k, mode=mode, padding_mode=padding_mode) for k in scale_factors]
-    )
-
-
-class Model(torch.jit.ScriptModule):
-    def __init__(self, incremental_scale: float, num_latent_features: int = 24):
-        super().__init__()
-        self.incremental_scale = incremental_scale
-        self._forward_shared = torch.nn.Sequential(
-            torch.nn.Conv2d(1, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
-        )
-        self._forward_mu = torch.nn.Sequential(
-            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, 1, 3, padding=1, bias=False),
-        )
-        torch.nn.init.normal_(
-            self._forward_mu[-1].weight,
-            mean=0.0,
-            std=1e-2 / np.sqrt(num_latent_features),
-        )
-        self._forward_sd = torch.nn.Sequential(
-            torch.nn.Conv2d(num_latent_features, num_latent_features, 3, padding=1),
-            torch.nn.LeakyReLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, 1, 3, padding=1),
-            torch.nn.Softplus(),
-        )
-        torch.nn.init.constant_(
-            self._forward_sd[-2].bias,
-            val=np.log(0.1),
-        )
-        torch.nn.init.normal_(
-            self._forward_sd[-2].weight,
-            mean=0.0,
-            std=1e-2 / np.sqrt(num_latent_features),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
-        x = interpolate(x, self.incremental_scale)
-        shared = self._forward_shared(x)
-        mu = x + self._forward_mu(shared)
-        sd = self._forward_sd(shared).clamp_min(1e-3)
-        return Normal(mu, sd)
 
 
 def main():
@@ -266,14 +152,14 @@ def main():
         samples = [
             torch.nn.functional.pad(
                 viz_samples[sample_idxs],
-                [x // 2 + 1 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
+                [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
                 mode="constant",
                 value=0.0,
             )
         ]
         mask = torch.nn.functional.pad(
             torch.ones_like(viz_samples[sample_idxs]),
-            [x // 2 + 1 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
+            [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
             mode="constant",
             value=0.0,
         )
