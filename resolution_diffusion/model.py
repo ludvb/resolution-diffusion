@@ -167,4 +167,4 @@ class Model(torch.jit.ScriptModule):
         h = self._unet(h)
         mu = x + self._post_transform_mu(h)
         sd = self._post_transform_sd(h)
-        return Normal(mu, sd.clamp_min(1e-3))
+        return Normal(mu, sd.clamp_min(1e-2))
