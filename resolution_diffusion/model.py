@@ -127,8 +127,11 @@ class Model(torch.jit.ScriptModule):
             num_levels=num_levels,
             attention_levels=attention_levels,
         )
-        self._pre_transform = torch.nn.Conv2d(
-            1, num_latent_features, kernel_size=3, padding=1
+        self._pre_transform = torch.nn.Sequential(
+            torch.nn.Conv2d(
+                1, num_latent_features, kernel_size=3, padding=1
+            ),
+            torch.nn.Dropout2d(inplace=True),
         )
         self._post_transform_mu = torch.nn.Sequential(
             torch.nn.BatchNorm2d(num_latent_features),
