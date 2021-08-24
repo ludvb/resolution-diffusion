@@ -307,13 +307,13 @@ def main():
 
             x = interpolate_samples(x, scale_factors, padding_mode="zeros")
             data_masks = interpolate_samples(
-                data_masks, scale_factors, padding_mode="zeros"
+                data_masks, scale_factors[:-1], padding_mode="zeros"
             )
+            pixel_weights = data_masks / data_masks.sum((2, 3, 4), keepdim=True)
 
             y = model(x[1:].reshape(-1, *x.shape[2:]))
-            lp = y.log_prob(x[:-1].reshape(-1, *x.shape[2:]))
-            lp = lp * data_masks[:-1].reshape(-1, *data_masks.shape[2:])
-            loss = -lp.sum((1, 2, 3)).mean(0)
+            lp = y.log_prob(x[:-1].reshape(-1, *x.shape[2:])).reshape_as(pixel_weights)
+            loss = -(lp * pixel_weights).sum((1, 2, 3, 4)).mean(0)
 
             optim.zero_grad()
             loss.backward()
