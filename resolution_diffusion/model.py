@@ -42,7 +42,7 @@ class SelfAttentionBlock(torch.jit.ScriptModule):
         w_ = torch.nn.functional.softmax(w_, dim=-1)
         w = w_.reshape_as(w)
         y = torch.einsum("bhwHW,bcHW->bchw", w, v)
-        return self.proj_orig(y)
+        return x + self.proj_orig(y)
 
 
 class UNet(torch.jit.ScriptModule):
