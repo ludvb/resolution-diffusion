@@ -26,6 +26,7 @@ def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--checkpoint", type=str)
     argparser.add_argument("--pixel-weights", type=bool)
+    argparser.add_argument("--learning-rate", type=float, default=1e-4)
     argparser.add_argument("--incremental-scale", type=float, default=1.25)
     argparser.add_argument("--dataset", type=str, default="MNIST")
     argparser.add_argument("--batch-size", type=int, default=32)
@@ -90,7 +91,7 @@ def main():
 
     model = Model(incremental_scale=incremental_scale)
     model = model.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optim = torch.optim.Adam(model.parameters(), lr=options.learning_rate)
 
     if options.checkpoint is not None:
         logging.info("Loading checkpoint: %s", options.checkpoint)
