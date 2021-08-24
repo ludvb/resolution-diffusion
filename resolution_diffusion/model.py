@@ -23,6 +23,7 @@ class ResidualBlock(torch.jit.ScriptModule):
 class SelfAttentionBlock(torch.jit.ScriptModule):
     def __init__(self, num_features: int, num_latent_features: int):
         super().__init__()
+        self.norm = torch.nn.BatchNorm2d(num_features)
         self.proj_q = torch.nn.Conv2d(num_features, num_latent_features, kernel_size=1)
         self.proj_k = torch.nn.Conv2d(num_features, num_latent_features, kernel_size=1)
         self.proj_v = torch.nn.Conv2d(num_features, num_latent_features, kernel_size=1)
@@ -31,6 +32,7 @@ class SelfAttentionBlock(torch.jit.ScriptModule):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.norm(x)
         q = self.proj_q(x)
         k = self.proj_k(x)
         v = self.proj_v(x)
@@ -58,7 +60,6 @@ class UNet(torch.jit.ScriptModule):
             if k in attention_levels:
                 return torch.nn.Sequential(
                     ResidualBlock(_level_features(k)),
-                    torch.nn.BatchNorm2d(_level_features(k)),
                     SelfAttentionBlock(_level_features(k), _level_features(k) // 2),
                 )
             return ResidualBlock(_level_features(k))
