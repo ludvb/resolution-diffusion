@@ -30,6 +30,7 @@ def main():
     argparser.add_argument("--incremental-scale", type=float, default=1.25)
     argparser.add_argument("--dataset", type=str, default="MNIST")
     argparser.add_argument("--batch-size", type=int, default=32)
+    argparser.add_argument("--features", type=int, default=32)
     argparser.add_argument(
         "--save-path",
         type=str,
@@ -89,7 +90,9 @@ def main():
     num_steps = int(np.ceil(np.log(data_dim) / np.log(incremental_scale)))
     scale_factors = [1 / incremental_scale ** k for k in range(0, num_steps)]
 
-    model = Model(incremental_scale=incremental_scale)
+    model = Model(
+        incremental_scale=incremental_scale, num_latent_features=options.features
+    )
     model = model.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=options.learning_rate)
 
