@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch.distributions import Normal
 
@@ -134,7 +135,12 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Conv2d(num_latent_features, num_latent_features, kernel_size=1),
             torch.nn.SiLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, 1, kernel_size=1),
+            torch.nn.Conv2d(num_latent_features, 1, kernel_size=1, bias=False),
+        )
+        torch.nn.init.normal_(
+            self._post_transform_mu[-1].weight,
+            mean=0.0,
+            std=1e-2 / np.sqrt(num_latent_features),
         )
         self._post_transform_sd = torch.nn.Sequential(
             torch.nn.BatchNorm2d(num_latent_features),
@@ -144,6 +150,16 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Conv2d(num_latent_features, 1, kernel_size=1),
             torch.nn.Softplus(),
         )
+        torch.nn.init.constant_(
+            self._post_transform_sd[-2].bias,
+            val=np.log(0.1),
+        )
+        torch.nn.init.normal_(
+            self._post_transform_sd[-2].weight,
+            mean=0.0,
+            std=1e-2 / np.sqrt(num_latent_features),
+        )
+
 
     def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
         x = interpolate(x, self.incremental_scale)
