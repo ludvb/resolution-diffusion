@@ -260,6 +260,7 @@ def run(rank, options):
             torch.distributed.all_reduce(loss)
             losses.append(loss.item())
             if progress:
+                progress.update()
                 progress.set_description(f"LOSS = {np.mean(losses):.2e}")
             if summary_writer:
                 summary_writer.add_scalar("loss", loss, global_step=global_step)
