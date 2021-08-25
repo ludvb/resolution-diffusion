@@ -191,7 +191,9 @@ def run(rank, options):
                 torch.save(
                     {"model": model.state_dict(), "optim": optim.state_dict()},
                     first_unique_filename(
-                        os.path.join(options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl")
+                        os.path.join(
+                            options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl"
+                        )
                     ),
                 )
 
@@ -227,7 +229,11 @@ def run(rank, options):
             samples = [
                 torch.nn.functional.pad(
                     viz_samples[sample_idxs],
-                    [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
+                    [
+                        (x + 1) // 2
+                        for x in viz_samples.shape[-2:][::-1]
+                        for _ in range(2)
+                    ],
                     mode="constant",
                     value=0.0,
                 )
