@@ -4,6 +4,7 @@ import itertools as it
 from functools import reduce
 from typing import Any
 
+import numpy as np
 import torch
 
 
@@ -50,15 +51,38 @@ def interpolate(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
 ):
-    transform = (1 / scale_factor) * torch.eye(3, device=x.device)[:2]
-    grid = torch.nn.functional.affine_grid(
-        transform.expand(x.shape[0], -1, -1),
-        size=x.shape,
-        align_corners=False,
+    kernel_size = 1 / scale_factor
+    kernel_size_integral = -int((-kernel_size) // 1)
+    k = torch.linspace(
+        -kernel_size_integral / 2,
+        kernel_size_integral / 2,
+        steps=kernel_size_integral,
+        device=x.device,
     )
-    return torch.nn.functional.grid_sample(
-        x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
+    k = (k[:, None] ** 2 + k ** 2).sqrt()
+    k = (kernel_size / 2 - k + 1.0).clamp(0.0, 1.0)
+    k = k / k.sum()
+    x = torch.nn.functional.pad(
+        x,
+        (
+            kernel_size_integral // 2,
+            (kernel_size_integral - 1) // 2,
+            kernel_size_integral // 2,
+            (kernel_size_integral - 1) // 2,
+        ),
+        mode="replicate",
     )
+    return torch.nn.functional.conv2d(x, k.expand(x.shape[1], x.shape[1], -1, -1))
+
+    # transform = (1 / scale_factor) * torch.eye(3, device=x.device)[:2]
+    # grid = torch.nn.functional.affine_grid(
+    #     transform.expand(x.shape[0], -1, -1),
+    #     size=x.shape,
+    #     align_corners=False,
+    # )
+    # return torch.nn.functional.grid_sample(
+    #     x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
+    # )
 
 
 @torch.jit.script

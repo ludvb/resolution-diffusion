@@ -160,19 +160,11 @@ def main():
 
         # Super resolution
         samples = [
-            torch.nn.functional.pad(
-                viz_samples[sample_idxs],
-                [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
-                mode="constant",
-                value=0.0,
+            torch.nn.functional.upsample_bilinear(
+                viz_samples[sample_idxs], scale_factor=2.0
             )
         ]
-        mask = torch.nn.functional.pad(
-            torch.ones_like(viz_samples[sample_idxs]),
-            [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
-            mode="constant",
-            value=0.0,
-        )
+        mask = torch.ones_like(samples[0])
         cur_scale_factor = 1.0
         while cur_scale_factor < 2.0:
             cur_scale_factor *= incremental_scale
