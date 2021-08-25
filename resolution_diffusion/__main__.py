@@ -12,7 +12,7 @@ import torchvision.transforms as image_transforms
 from torch.distributed.optim import ZeroRedundancyOptimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torchvision.datasets import MNIST
+from torchvision.datasets import CIFAR10, MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
@@ -86,6 +86,20 @@ def run(rank, options):
 
     if options.dataset.lower() == "mnist":
         dataset = MNIST(
+            "./data",
+            train=True,
+            download=True,
+            transform=image_transforms.Compose(
+                [
+                    image_transforms.ToTensor(),
+                    image_transforms.Normalize(
+                        mean=torch.tensor([0.5]), std=torch.tensor([0.5])
+                    ),
+                ]
+            ),
+        )
+    elif options.dataset.lower() == "cifar10":
+        dataset = CIFAR10(
             "./data",
             train=True,
             download=True,
