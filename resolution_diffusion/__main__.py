@@ -89,6 +89,7 @@ def run(rank, options):
         )
     )
     logging.info(" ".join(sys.argv))
+    logging.info("Options parsed as: " + str(options))
 
     if options.dataset.lower() == "mnist":
         dataset = MNIST(
