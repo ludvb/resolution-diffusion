@@ -39,6 +39,9 @@ def main():
     )
     options = argparser.parse_args()
 
+    os.makedirs(os.path.join(options.save_path, "checkpoints"), exist_ok=True)
+    os.makedirs(os.path.join(options.save_path, "tb"), exist_ok=True)
+
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
     if world_size == 1:
@@ -55,8 +58,6 @@ def run(rank, options):
     )
 
     if rank == 0:
-        os.makedirs(os.path.join(options.save_path, "checkpoints"), exist_ok=True)
-        os.makedirs(os.path.join(options.save_path, "tb"), exist_ok=True)
         logging.basicConfig(
             filename=first_unique_filename(os.path.join(options.save_path, "log")),
             level=logging.DEBUG,
