@@ -101,6 +101,12 @@ def run(rank, options):
                     image_transforms.Normalize(
                         mean=torch.tensor([0.5]), std=torch.tensor([0.5])
                     ),
+                    lambda img: (0.9 * img + 0.05 * torch.randn_like(img)).clamp(
+                        -1.0, 1.0
+                    )
+                    # ^ Add isotropic Gaussian noise to make the data manifold
+                    #   slightly smoother. MNIST images have many extreme values
+                    #   (0 or 1) that otherwise may make training more difficult.
                 ]
             ),
         )
@@ -174,9 +180,9 @@ def run(rank, options):
         torch.ones_like(viz_samples), scale_factors, padding_mode="zeros"
     )
     epdf_masks = epdf_masks.bool()
-    assert (
-        len(np.unique(epdf_interp[-1], axis=0)) < 64
-    ), "Lowest resolution is not densely sampled"
+    # assert (
+    #     len(np.unique(epdf_interp[-1], axis=0)) < 64
+    # ), "Lowest resolution is not densely sampled"
 
     def generate_batches():
         for epoch in it.count(1):
