@@ -158,13 +158,13 @@ def run(rank, options):
     global_step = 0
     for epoch in it.count(1):
         optim.consolidate_state_dict()
-        torch.distributed.barrier()
-        torch.save(
-            {"model": model.state_dict(), "optim": optim.state_dict()},
-            first_unique_filename(
-                os.path.join(options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl")
-            ),
-        )
+        if rank == 0:
+            torch.save(
+                {"model": model.state_dict(), "optim": optim.state_dict()},
+                first_unique_filename(
+                    os.path.join(options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl")
+                ),
+            )
 
         ## Visualization
         model.eval()
