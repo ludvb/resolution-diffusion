@@ -141,7 +141,8 @@ def run(rank, options):
     )
 
     incremental_scale = options.incremental_scale
-    data_dim = np.max(next(iter(dataloader))[0].shape[2:])
+    img_channels, *img_shape = next(iter(dataloader))[0].shape[1:]
+    data_dim = np.max(img_shape)
     num_steps = int(np.ceil(np.log(data_dim) / np.log(incremental_scale)))
     scale_factors = [1 / incremental_scale ** k for k in range(0, num_steps)]
 
@@ -149,6 +150,7 @@ def run(rank, options):
     torch.manual_seed(options.seed)
     model = Model(
         incremental_scale=incremental_scale,
+        img_channels=img_channels,
         num_latent_features=options.features,
         num_levels=options.num_levels,
         attention_levels=options.attention,

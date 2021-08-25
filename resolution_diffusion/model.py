@@ -116,6 +116,7 @@ class Model(torch.jit.ScriptModule):
     def __init__(
         self,
         incremental_scale: float,
+        img_channels: int = 1,
         num_latent_features: int = 32,
         num_levels: int = 2,
         attention_levels: list[int] = [1, 2],
@@ -129,7 +130,7 @@ class Model(torch.jit.ScriptModule):
         )
         self._pre_transform = torch.nn.Sequential(
             torch.nn.Conv2d(
-                1, num_latent_features, kernel_size=3, padding=1
+                img_channels, num_latent_features, kernel_size=3, padding=1
             ),
             torch.nn.Dropout2d(inplace=True),
         )
@@ -138,7 +139,7 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Conv2d(num_latent_features, num_latent_features, kernel_size=1),
             torch.nn.SiLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, 1, kernel_size=1, bias=False),
+            torch.nn.Conv2d(num_latent_features, img_channels, kernel_size=1, bias=False),
         )
         torch.nn.init.normal_(
             self._post_transform_mu[-1].weight,
@@ -150,7 +151,7 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Conv2d(num_latent_features, num_latent_features, kernel_size=1),
             torch.nn.SiLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, 1, kernel_size=1),
+            torch.nn.Conv2d(num_latent_features, img_channels, kernel_size=1),
             torch.nn.Softplus(),
         )
         torch.nn.init.constant_(
