@@ -5,11 +5,12 @@ import logging
 import subprocess
 import sys
 from datetime import datetime
+from typing import Optional
 
 import numpy as np
 import torch
 import torchvision.transforms as image_transforms
-from torch.distributions import Normal
+from torch.distributed.optim import ZeroRedundancyOptimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.datasets import MNIST
@@ -123,12 +124,14 @@ def run(rank, options):
     torch.manual_seed(options.seed)
     model = Model(
         incremental_scale=incremental_scale, num_latent_features=options.features
-    ).to(device)
+    )
     model = torch.nn.parallel.DistributedDataParallel(
         model.to(device=device), device_ids=[device], output_device=device
     )
 
-    optim = torch.optim.Adam(model.parameters(), lr=options.learning_rate)
+    optim = ZeroRedundancyOptimizer(
+        model.parameters(), optimizer_class=torch.optim.Adam, lr=options.learning_rate
+    )
 
     if options.checkpoint is not None:
         logging.info("Loading checkpoint: %s", options.checkpoint)
@@ -136,20 +139,9 @@ def run(rank, options):
         model.load_state_dict(checkpoint["model"])
         optim.load_state_dict(checkpoint["optim"])
 
-    if rank == 0:
-        return run_training_rank0(
-            options.save_path, dataloader, model, optim, scale_factors, device
-        )
-    return run_training_rankX(dataloader, dataloader, optim, scale_factors, device)
-
-
-def run_training_rankX(dataloader, model, optim, scale_factors, device):
-    for _ in training_loop(dataloader, model, optim, scale_factors, device):
-        pass
-
-
-def run_training_rank0(save_path, dataloader, model, optim, scale_factors, device):
-    summary_writer = SummaryWriter(os.path.join(save_path, "tb"))
+    summary_writer = (
+        SummaryWriter(os.path.join(options.save_path, "tb")) if rank == 0 else None
+    )
 
     viz_samples = torch.stack(
         [dataloader.dataset[i][0] for i in np.random.choice(len(dataloader), size=1024)]
@@ -163,51 +155,35 @@ def run_training_rank0(save_path, dataloader, model, optim, scale_factors, devic
         len(np.unique(epdf_interp[-1], axis=0)) < 64
     ), "Lowest resolution is not densely sampled"
 
-    losses = []
-    cur_epoch = 0
-    progress = tqdm(dataloader)
-    for global_step, (epoch, loss) in enumerate(
-        training_loop(progress, model, optim, scale_factors, device)
-    ):
-        if epoch > cur_epoch:
-            if losses != []:
-                logging.info(
-                    "  //  ".join(
-                        [
-                            f"EPOCH {cur_epoch:d}",
-                            f"LOSS = {np.mean(losses):.3e}",
-                        ]
-                    )
-                )
-                losses = []
+    global_step = 0
+    for epoch in it.count(1):
+        optim.consolidate_state_dict()
+        torch.save(
+            {"model": model.state_dict(), "optim": optim.state_dict()},
+            first_unique_filename(
+                os.path.join(options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl")
+            ),
+        )
 
-            cur_epoch = epoch
+        ## Visualization
+        model.eval()
+        rng_state = torch.get_rng_state()
+        np.random.seed(0)
+        torch.manual_seed(0)
 
-            torch.save(
-                {"model": model.state_dict(), "optim": optim.state_dict()},
-                first_unique_filename(
-                    os.path.join(save_path, "checkpoints", f"epoch-{epoch:04d}.pkl")
-                ),
-            )
+        sample_idxs = np.random.choice(epdf_interp.size(1), size=8)
 
-            ## Visualization
-            model.eval()
-            rng_state = torch.get_rng_state()
-            np.random.seed(0)
-            torch.manual_seed(0)
-
-            sample_idxs = np.random.choice(epdf_interp.size(1), size=8)
-
-            # Sampling
-            samples = [epdf_interp[-1, sample_idxs]]
-            for mask in epdf_masks[:-1, sample_idxs].flip(0):
-                with torch.no_grad():
-                    x = model(samples[-1].to(device)).sample().cpu()
-                x = x.clamp(-1.0, 1.0)
-                x[~mask] = 0.0
-                samples.append(x)
-            samples = torch.stack(samples)
-            samples = (samples + 1.0) / 2
+        # Sampling
+        samples = [epdf_interp[-1, sample_idxs]]
+        for mask in epdf_masks[:-1, sample_idxs].flip(0):
+            with torch.no_grad():
+                x = model(samples[-1].to(device)).sample().cpu()
+            x = x.clamp(-1.0, 1.0)
+            x[~mask] = 0.0
+            samples.append(x)
+        samples = torch.stack(samples)
+        samples = (samples + 1.0) / 2
+        if summary_writer:
             summary_writer.add_image(
                 "samples/generative",
                 make_grid(
@@ -217,37 +193,34 @@ def run_training_rank0(save_path, dataloader, model, optim, scale_factors, devic
                 global_step=global_step,
             )
 
-            # Super resolution
-            samples = [
-                torch.nn.functional.pad(
-                    viz_samples[sample_idxs],
-                    [
-                        (x + 1) // 2
-                        for x in viz_samples.shape[-2:][::-1]
-                        for _ in range(2)
-                    ],
-                    mode="constant",
-                    value=0.0,
-                )
-            ]
-            mask = torch.nn.functional.pad(
-                torch.ones_like(viz_samples[sample_idxs]),
+        # Super resolution
+        samples = [
+            torch.nn.functional.pad(
+                viz_samples[sample_idxs],
                 [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
                 mode="constant",
                 value=0.0,
             )
-            cur_scale_factor = 1.0
-            while cur_scale_factor < 2.0:
-                incremental_scale = scale_factors[0] / scale_factors[1]
-                cur_scale_factor *= incremental_scale
-                mask = interpolate(mask, scale_factor=incremental_scale)
-                with torch.no_grad():
-                    x = model(samples[-1].to(device)).sample().cpu()
-                x = x.clamp(-1.0, 1.0)
-                x[~mask.bool()] = 0.0
-                samples.append(x)
-            samples = torch.stack(samples)
-            samples = (samples + 1.0) / 2
+        ]
+        mask = torch.nn.functional.pad(
+            torch.ones_like(viz_samples[sample_idxs]),
+            [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
+            mode="constant",
+            value=0.0,
+        )
+        cur_scale_factor = 1.0
+        while cur_scale_factor < 2.0:
+            incremental_scale = scale_factors[0] / scale_factors[1]
+            cur_scale_factor *= incremental_scale
+            mask = interpolate(mask, scale_factor=incremental_scale)
+            with torch.no_grad():
+                x = model(samples[-1].to(device)).sample().cpu()
+            x = x.clamp(-1.0, 1.0)
+            x[~mask.bool()] = 0.0
+            samples.append(x)
+        samples = torch.stack(samples)
+        samples = (samples + 1.0) / 2
+        if summary_writer:
             summary_writer.add_image(
                 "samples/super-resolution",
                 make_grid(
@@ -257,16 +230,11 @@ def run_training_rank0(save_path, dataloader, model, optim, scale_factors, devic
                 global_step=global_step,
             )
 
-            torch.set_rng_state(rng_state)
+        torch.set_rng_state(rng_state)
 
-        torch.distributed.all_reduce(loss)
-        losses.append(loss.item())
-        progress.set_description(f"LOSS = {np.mean(losses):.2e}")
-        summary_writer.add_scalar("loss", loss, global_step=global_step)
-
-
-def training_loop(dataloader, model, optim, scale_factors, device):
-    for epoch in it.count(1):
+        ## Training loop
+        progress = tqdm(total=len(dataloader)) if rank == 0 else None
+        losses = []
         for x, _ in dataloader:
             model.train()
 
@@ -286,7 +254,23 @@ def training_loop(dataloader, model, optim, scale_factors, device):
             loss.backward()
             optim.step()
 
-            yield epoch, loss.detach()
+            global_step += 1
+
+            torch.distributed.all_reduce(loss)
+            losses.append(loss.item())
+            if progress:
+                progress.set_description(f"LOSS = {np.mean(losses):.2e}")
+            if summary_writer:
+                summary_writer.add_scalar("loss", loss, global_step=global_step)
+
+        logging.info(
+            "  //  ".join(
+                [
+                    f"EPOCH {epoch:d}",
+                    f"LOSS = {np.mean(losses):.3e}",
+                ]
+            )
+        )
 
 
 if __name__ == "__main__":
