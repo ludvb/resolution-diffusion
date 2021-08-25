@@ -36,6 +36,8 @@ def main():
     argparser.add_argument("--seed", type=int, default=0)
     argparser.add_argument("--viz-interval", type=int, default=1000)
     argparser.add_argument("--checkpoint-interval", type=int, default=1000)
+    argparser.add_argument("--mp-host", type=str, default="localhost")
+    argparser.add_argument("--mp-port", type=str, default="12355")
     argparser.add_argument(
         "--save-path",
         type=str,
@@ -46,8 +48,8 @@ def main():
     os.makedirs(os.path.join(options.save_path, "checkpoints"), exist_ok=True)
     os.makedirs(os.path.join(options.save_path, "tb"), exist_ok=True)
 
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
+    os.environ["MASTER_ADDR"] = options.mp_host
+    os.environ["MASTER_PORT"] = options.mp_port
     if world_size == 1:
         run(0, options)
     else:
