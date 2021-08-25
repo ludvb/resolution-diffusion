@@ -31,6 +31,8 @@ def main():
     argparser.add_argument("--dataset", type=str, default="MNIST")
     argparser.add_argument("--batch-size", type=int, default=32)
     argparser.add_argument("--features", type=int, default=32)
+    argparser.add_argument("--num-levels", type=int, default=2)
+    argparser.add_argument("--attention", nargs="*", type=int, default=[1, 2])
     argparser.add_argument("--seed", type=int, default=0)
     argparser.add_argument("--viz-interval", type=int, default=1000)
     argparser.add_argument("--checkpoint-interval", type=int, default=1000)
@@ -139,7 +141,10 @@ def run(rank, options):
     device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(options.seed)
     model = Model(
-        incremental_scale=incremental_scale, num_latent_features=options.features
+        incremental_scale=incremental_scale,
+        num_latent_features=options.features,
+        num_levels=options.num_levels,
+        attention_levels=options.attention,
     )
     model = torch.nn.parallel.DistributedDataParallel(
         model.to(device=device), device_ids=[device], output_device=device
