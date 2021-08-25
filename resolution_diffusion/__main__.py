@@ -16,7 +16,7 @@ from torchvision.datasets import CIFAR10, MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-from .common import first_unique_filename, interpolate, interpolate_samples
+from .common import add_noise, first_unique_filename, interpolate, interpolate_samples
 from .model import Model
 
 world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
@@ -101,9 +101,7 @@ def run(rank, options):
                     image_transforms.Normalize(
                         mean=torch.tensor([0.5]), std=torch.tensor([0.5])
                     ),
-                    lambda img: (0.9 * img + 0.05 * torch.randn_like(img)).clamp(
-                        -1.0, 1.0
-                    )
+                    add_noise,
                     # ^ Add isotropic Gaussian noise to make the data manifold
                     #   slightly smoother. MNIST images have many extreme values
                     #   (0 or 1) that otherwise may make training more difficult.

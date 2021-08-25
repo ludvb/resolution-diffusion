@@ -17,6 +17,10 @@ def first_unique_filename(x):
     )
 
 
+def add_noise(img: torch.Tensor, scale: float = 0.05) -> torch.Tensor:
+    return ((1 - 2 * scale) * img + 0.05 * torch.randn_like(img)).clamp(-1.0, 1.0)
+
+
 @torch.jit.script
 def view_center(x: torch.Tensor, target_shape: list[int]) -> torch.Tensor:
     for (i, a), b in zip(list(enumerate(x.shape))[::-1], target_shape[::-1]):
