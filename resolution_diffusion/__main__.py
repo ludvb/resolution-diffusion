@@ -131,16 +131,7 @@ def run(rank, options):
                         mean=torch.tensor([0.5]), std=torch.tensor([0.5])
                     ),
                 ]
-                + (
-                    [
-                        add_noise,
-                        # ^ Add isotropic Gaussian noise to make the data manifold
-                        #   slightly smoother. MNIST images have many extreme values
-                        #   (0 or 1) that otherwise may make training more difficult.
-                    ]
-                    if options.add_dataset_noise
-                    else []
-                )
+                + ([add_noise] if options.add_dataset_noise else [])
             ),
         )
     else:
