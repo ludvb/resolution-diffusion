@@ -219,7 +219,7 @@ def run(rank, options):
         ).squeeze(1)
         data_masks = interpolate2d(
             data_masks,
-            scale_factors[scale_factors_idxs].unsqueeze(1).to(x),
+            scale_factors[scale_factors_idxs - 1].unsqueeze(1).to(x),
             padding_mode="zeros",
         ).squeeze(1)
         data_masks = (data_masks > 0.99).float()
