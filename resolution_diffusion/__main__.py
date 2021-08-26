@@ -163,7 +163,7 @@ def run(rank, options):
     )
 
     optim = ZeroRedundancyOptimizer(
-        model.parameters(), optimizer_class=torch.optim.Adam, lr=options.learning_rate
+        model.parameters(), torch.optim.Adam, lr=options.learning_rate
     )
 
     if options.checkpoint is not None:
