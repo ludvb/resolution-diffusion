@@ -10,7 +10,6 @@ import numpy as np
 import torch
 import torchvision.transforms as image_transforms
 from torch.distributed.optim import ZeroRedundancyOptimizer
-from torch.distributions import Normal
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.datasets import CIFAR10, MNIST
@@ -185,11 +184,6 @@ def run(rank, options):
         SummaryWriter(os.path.join(options.save_path, "tb")) if rank == 0 else None
     )
 
-    if summary_writer:
-        summary_writer.add_graph(
-            model, input_to_model=next(iter(dataloader))[0].to(device)
-        )
-
     def generate_batches():
         for epoch in it.count(1):
             for batch_number, (x, _) in enumerate(dataloader):
@@ -221,9 +215,8 @@ def run(rank, options):
         ).squeeze(1)
         data_masks = (data_masks > 0.99).float()
 
-        mu, sd = model(x_src)
-        distr = Normal(mu, sd)
-        lp = distr.log_prob(x_trg).reshape_as(data_masks)
+        y = model(x_src)
+        lp = y.log_prob(x_trg).reshape_as(data_masks)
         loss = -(lp * data_masks).sum((1, 2, 3)).mean(0)
 
         optim.zero_grad()
@@ -269,8 +262,7 @@ def run(rank, options):
         samples = [epdf_interp[sample_idxs, -1:].reshape(-1, *epdf_interp.shape[-3:])]
         for mask in epdf_masks[sample_idxs, :-1].transpose(0, 1).flip(0):
             with torch.no_grad():
-                mu, sd = model(samples[-1].to(device))
-            x = Normal(mu, sd).sample().cpu()
+                x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
             x[~mask] = 0.0
             samples.append(x)
@@ -321,8 +313,7 @@ def run(rank, options):
             ).squeeze(1)
             cur_mask = (cur_mask > 0.99).float()
             with torch.no_grad():
-                mu, sd = model(samples[-1].to(device))
-            x = Normal(mu, sd).sample().cpu()
+                x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
             x[~cur_mask.bool()] = 0.0
             samples.append(x)
