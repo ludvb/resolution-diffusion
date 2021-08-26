@@ -256,7 +256,7 @@ def run(rank, options):
         )
         epdf_masks = (epdf_masks > 0.99).bool()
 
-        sample_idxs = np.random.choice(epdf_interp.size(1), size=128)
+        sample_idxs = np.random.choice(epdf_interp.size(0), size=81)
 
         # Sampling
         samples = [epdf_interp[sample_idxs, -1:].reshape(-1, *epdf_interp.shape[-3:])]
@@ -275,7 +275,7 @@ def run(rank, options):
             summary_writer.add_image(
                 "samples/generative",
                 make_grid(
-                    samples.transpose(0, 1)[:8].reshape(-1, *samples.shape[2:]),
+                    samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
                     nrow=samples.shape[0],
                 ),
                 global_step=global_step,
@@ -287,34 +287,14 @@ def run(rank, options):
             )
 
         # Super resolution
-        viz_samples_ = viz_samples[sample_idxs][:8]
-        samples = [
-            torch.nn.functional.pad(
-                viz_samples_,
-                [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
-                mode="constant",
-                value=0.0,
-            )
-        ]
-        mask = torch.nn.functional.pad(
-            torch.ones_like(viz_samples_),
-            [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
-            mode="constant",
-            value=0.0,
-        )
-        cur_scale_factor = 1.0
-        cur_mask = mask
-        while not cur_mask.bool().all():
-            incremental_scale = scale_factors[0] / scale_factors[1]
-            cur_scale_factor *= incremental_scale
-            cur_mask = interpolate2d(
-                mask, scale_factors=torch.tensor([[cur_scale_factor]])
-            ).squeeze(1)
-            cur_mask = (cur_mask > 0.99).float()
+        starting_rank = int(np.ceil(np.log(4) / np.log(incremental_scale)))
+        samples = [epdf_interp[sample_idxs, starting_rank]]
+        masks = [epdf_masks[sample_idxs, i] for i in range(0, starting_rank)]
+        for mask in masks[::-1]:
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~cur_mask.bool()] = 0.0
+            x[~mask.bool()] = 0.0
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
