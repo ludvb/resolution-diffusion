@@ -188,6 +188,7 @@ def run(rank, options):
         data_masks = interpolate_samples(
             data_masks, scale_factors[:-1], padding_mode="zeros"
         )
+        data_masks = data_masks.floor()
 
         y = model(x[1:].reshape(-1, *x.shape[2:]))
         lp = y.log_prob(x[:-1].reshape(-1, *x.shape[2:])).reshape_as(data_masks)
@@ -266,7 +267,7 @@ def run(rank, options):
             incremental_scale = scale_factors[0] / scale_factors[1]
             cur_scale_factor *= incremental_scale
             mask = interpolate(mask, scale_factor=incremental_scale)
-            mask = torch.ceil(mask)
+            mask = mask.floor()
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
