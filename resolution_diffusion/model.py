@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch.distributions import Normal
 
 from .common import interpolate2d
 
@@ -166,11 +165,11 @@ class Model(torch.jit.ScriptModule):
             std=1e-2 / np.sqrt(num_latent_features),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = interpolate2d(x, torch.tensor([[self.incremental_scale]], device=x.device))
         x = x.squeeze(1)
         h = self._pre_transform(x)
         h = self._unet(h)
         mu = x + self._post_transform_mu(h)
         sd = self._post_transform_sd(h)
-        return Normal(mu, sd.clamp_min(1e-2))
+        return mu, sd.clamp_min(1e-2)
