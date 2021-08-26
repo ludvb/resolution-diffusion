@@ -18,7 +18,7 @@ from torchvision.utils import make_grid
 from tqdm import tqdm
 
 from .common import add_noise, first_unique_filename, interpolate2d
-
+from .evaluation import inception_score
 from .model import Model
 
 world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
@@ -272,7 +272,7 @@ def run(rank, options):
         )
         epdf_masks = (epdf_masks > 0.99).bool()
 
-        sample_idxs = np.random.choice(epdf_interp.size(1), size=8)
+        sample_idxs = np.random.choice(epdf_interp.size(1), size=128)
 
         # Sampling
         samples = [epdf_interp[sample_idxs, -1:].reshape(-1, *epdf_interp.shape[-3:])]
@@ -292,9 +292,16 @@ def run(rank, options):
             summary_writer.add_image(
                 "samples/generative",
                 make_grid(
-                    samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
+                    samples.transpose(0, 1)[:8].reshape(-1, *samples.shape[2:]),
                     nrow=samples.shape[0],
                 ),
+                global_step=global_step,
+            )
+            summary_writer.add_scalars(
+                "samples/generative/inception-score",
+                {
+                    "resolution-diffusion": inception_score(samples[-1], dataset),
+                },
                 global_step=global_step,
             )
 
