@@ -287,16 +287,17 @@ def run(rank, options):
             )
 
         # Super resolution
+        viz_samples_ = viz_samples[sample_idxs][:8]
         samples = [
             torch.nn.functional.pad(
-                viz_samples[sample_idxs],
+                viz_samples_,
                 [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
                 mode="constant",
                 value=0.0,
             )
         ]
         mask = torch.nn.functional.pad(
-            torch.ones_like(viz_samples[sample_idxs]),
+            torch.ones_like(viz_samples_),
             [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
             mode="constant",
             value=0.0,
