@@ -287,14 +287,14 @@ def run(rank, options):
         while cur_scale_factor < 2.0:
             incremental_scale = scale_factors[0] / scale_factors[1]
             cur_scale_factor *= incremental_scale
-            mask = interpolate2d(
-                mask, scale_factors=torch.tensor([[incremental_scale]])
+            cur_mask = interpolate2d(
+                mask, scale_factors=torch.tensor([[cur_scale_factor]])
             ).squeeze(1)
-            mask = (mask > 0.99).float()
+            cur_mask = (cur_mask > 0.99).float()
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~mask.bool()] = 0.0
+            x[~cur_mask.bool()] = 0.0
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
