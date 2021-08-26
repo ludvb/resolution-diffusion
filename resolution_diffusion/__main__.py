@@ -26,7 +26,6 @@ world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--checkpoint", type=str)
-    argparser.add_argument("--pixel-weights", type=bool)
     argparser.add_argument("--learning-rate", type=float, default=1e-4)
     argparser.add_argument("--incremental-scale", type=float, default=1.25)
     argparser.add_argument("--dataset", type=str, default="MNIST")
