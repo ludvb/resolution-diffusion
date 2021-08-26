@@ -65,14 +65,14 @@ def run(rank, options):
 
     if rank == 0:
         logging.basicConfig(
-            filename=first_unique_filename(os.path.join(options.save_path, "log")),
+            filename=os.path.join(options.save_path, "log"),
             level=logging.DEBUG,
             format="[%(asctime)s]  (%(levelname)s)  %(message)s",
             encoding="utf-8",
         )
     else:
         logging.basicConfig(
-            filename=first_unique_filename(os.path.join(options.save_path, "log")),
+            filename=os.path.join(options.save_path, "log"),
             level=logging.WARNING,
             format="[%(asctime)s]  $(process)d  (%(levelname)s)  %(message)s",
             encoding="utf-8",
