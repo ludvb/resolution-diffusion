@@ -297,7 +297,7 @@ def run(rank, options):
                     {"model": model.state_dict(), "optim": optim.state_dict()},
                     first_unique_filename(
                         os.path.join(
-                            options.save_path, "checkpoints", f"epoch-{epoch:04d}.pkl"
+                            options.save_path, "checkpoints", f"step-{global_step:06d}.pkl"
                         )
                     ),
                 )
