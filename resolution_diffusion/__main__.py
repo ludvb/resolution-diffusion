@@ -30,6 +30,7 @@ def main():
     argparser.add_argument("--grad-clip", type=float)
     argparser.add_argument("--incremental-scale", type=float, default=1.25)
     argparser.add_argument("--dataset", type=str, default="MNIST")
+    argparser.add_argument("--add-dataset-noise", type=bool)
     argparser.add_argument("--batch-size", type=int, default=32)
     argparser.add_argument("--features", type=int, default=32)
     argparser.add_argument("--num-levels", type=int, default=2)
@@ -104,11 +105,17 @@ def run(rank, options):
                     image_transforms.Normalize(
                         mean=torch.tensor([0.5]), std=torch.tensor([0.5])
                     ),
-                    add_noise,
-                    # ^ Add isotropic Gaussian noise to make the data manifold
-                    #   slightly smoother. MNIST images have many extreme values
-                    #   (0 or 1) that otherwise may make training more difficult.
                 ]
+                + (
+                    [
+                        add_noise,
+                        # ^ Add isotropic Gaussian noise to make the data manifold
+                        #   slightly smoother. MNIST images have many extreme values
+                        #   (0 or 1) that otherwise may make training more difficult.
+                    ]
+                    if options.add_dataset_noise
+                    else []
+                )
             ),
         )
     elif options.dataset.lower() == "cifar10":
@@ -123,6 +130,16 @@ def run(rank, options):
                         mean=torch.tensor([0.5]), std=torch.tensor([0.5])
                     ),
                 ]
+                + (
+                    [
+                        add_noise,
+                        # ^ Add isotropic Gaussian noise to make the data manifold
+                        #   slightly smoother. MNIST images have many extreme values
+                        #   (0 or 1) that otherwise may make training more difficult.
+                    ]
+                    if options.add_dataset_noise
+                    else []
+                )
             ),
         )
     else:
