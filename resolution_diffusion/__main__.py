@@ -316,7 +316,7 @@ def run(rank, options):
                 print("")
                 progress.reset()
             progress.update()
-            progress.set_description(f"LOSS = {np.mean(losses):.2e}")
+            progress.set_description(f"EPOCH {epoch:04d}  LOSS = {np.mean(losses):.2e}")
 
 
 if __name__ == "__main__":
