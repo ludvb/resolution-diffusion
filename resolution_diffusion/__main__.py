@@ -280,11 +280,9 @@ def run(rank, options):
                 ),
                 global_step=global_step,
             )
-            summary_writer.add_scalars(
+            summary_writer.add_scalar(
                 "samples/generative/inception-score",
-                {
-                    "resolution-diffusion": inception_score(samples[-1], dataset),
-                },
+                inception_score(samples[-1], dataset),
                 global_step=global_step,
             )
 
