@@ -201,12 +201,12 @@ def run(rank, options):
         x_src = interpolate2d(
             x,
             scale_factors[scale_factors_idxs].unsqueeze(1).to(x),
-            padding_mode="zeros",
+            padding_mode="border",
         ).squeeze(1)
         x_trg = interpolate2d(
             x,
             scale_factors[scale_factors_idxs - 1].unsqueeze(1).to(x),
-            padding_mode="zeros",
+            padding_mode="border",
         ).squeeze(1)
         data_masks = interpolate2d(
             data_masks,
@@ -247,7 +247,7 @@ def run(rank, options):
             ]
         )
         epdf_interp = interpolate2d(
-            viz_samples, scale_factors.unsqueeze(0), padding_mode="zeros"
+            viz_samples, scale_factors.unsqueeze(0), padding_mode="border"
         )
         epdf_masks = interpolate2d(
             torch.ones_like(viz_samples),
@@ -264,7 +264,7 @@ def run(rank, options):
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~mask] = 0.0
+            x[~mask] = samples[0][~mask]
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
@@ -292,8 +292,7 @@ def run(rank, options):
             torch.nn.functional.pad(
                 viz_samples_,
                 [(x + 1) // 2 for x in viz_samples.shape[-2:][::-1] for _ in range(2)],
-                mode="constant",
-                value=0.0,
+                mode="replicate",
             )
         ]
         mask = torch.nn.functional.pad(
@@ -308,13 +307,15 @@ def run(rank, options):
             incremental_scale = scale_factors[0] / scale_factors[1]
             cur_scale_factor *= incremental_scale
             cur_mask = interpolate2d(
-                mask, scale_factors=torch.tensor([[cur_scale_factor]])
+                mask,
+                scale_factors=torch.tensor([[cur_scale_factor]]),
+                padding_mode="zeros",
             ).squeeze(1)
             cur_mask = (cur_mask > 0.99).float()
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~cur_mask.bool()] = 0.0
+            x[~cur_mask.bool()] = samples[0][~cur_mask.bool()]
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
