@@ -16,7 +16,8 @@ from torchvision.datasets import CIFAR10, MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-from .common import add_noise, first_unique_filename, interpolate, interpolate_samples
+from .common import add_noise, first_unique_filename, interpolate2d
+
 from .model import Model
 
 world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
@@ -62,6 +63,7 @@ def run(rank, options):
         world_size=world_size,
         rank=rank,
     )
+    device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
 
     if rank == 0:
         logging.basicConfig(
@@ -144,9 +146,10 @@ def run(rank, options):
     img_channels, *img_shape = next(iter(dataloader))[0].shape[1:]
     data_dim = np.max(img_shape)
     num_steps = int(np.ceil(np.log(data_dim) / np.log(incremental_scale)))
-    scale_factors = [1 / incremental_scale ** k for k in range(0, num_steps)]
+    scale_factors = torch.tensor(
+        [1 / incremental_scale ** k for k in range(0, num_steps)]
+    )
 
-    device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(options.seed)
     model = Model(
         incremental_scale=incremental_scale,
@@ -184,14 +187,28 @@ def run(rank, options):
         x = x.to(device=device)
         data_masks = torch.ones_like(x)
 
-        x = interpolate_samples(x, scale_factors, padding_mode="zeros")
-        data_masks = interpolate_samples(
-            data_masks, scale_factors[:-1], padding_mode="zeros"
+        scale_factors_idxs = torch.randint(
+            1, scale_factors.shape[0], size=(x.shape[0],)
         )
+        x_src = interpolate2d(
+            x,
+            scale_factors[scale_factors_idxs].unsqueeze(1).to(x),
+            padding_mode="zeros",
+        ).squeeze(1)
+        x_trg = interpolate2d(
+            x,
+            scale_factors[scale_factors_idxs - 1].unsqueeze(1).to(x),
+            padding_mode="zeros",
+        ).squeeze(1)
+        data_masks = interpolate2d(
+            data_masks,
+            scale_factors[scale_factors_idxs - 1].unsqueeze(1).to(x),
+            padding_mode="zeros",
+        ).squeeze(1)
 
-        y = model(x[1:].reshape(-1, *x.shape[2:]))
-        lp = y.log_prob(x[:-1].reshape(-1, *x.shape[2:])).reshape_as(data_masks)
-        loss = -(lp * data_masks).sum((1, 2, 3, 4)).mean(0)
+        y = model(x_src)
+        lp = y.log_prob(x_trg).reshape_as(data_masks)
+        loss = -(lp * data_masks).sum((1, 2, 3)).mean(0)
 
         optim.zero_grad()
         loss.backward()
@@ -216,19 +233,21 @@ def run(rank, options):
                 for i in np.random.choice(len(dataloader), size=1024)
             ]
         )
-        epdf_interp = interpolate_samples(
-            viz_samples, scale_factors, padding_mode="zeros"
+        epdf_interp = interpolate2d(
+            viz_samples, scale_factors.unsqueeze(0), padding_mode="zeros"
         )
-        epdf_masks = interpolate_samples(
-            torch.ones_like(viz_samples), scale_factors, padding_mode="zeros"
+        epdf_masks = interpolate2d(
+            torch.ones_like(viz_samples),
+            scale_factors.unsqueeze(0),
+            padding_mode="zeros",
         )
         epdf_masks = epdf_masks.bool()
 
         sample_idxs = np.random.choice(epdf_interp.size(1), size=8)
 
         # Sampling
-        samples = [epdf_interp[-1, sample_idxs]]
-        for mask in epdf_masks[:-1, sample_idxs].flip(0):
+        samples = [epdf_interp[sample_idxs, -1:].reshape(-1, *epdf_interp.shape[-3:])]
+        for mask in epdf_masks[sample_idxs, :-1].transpose(0, 1).flip(0):
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
@@ -265,7 +284,9 @@ def run(rank, options):
         while cur_scale_factor < 2.0:
             incremental_scale = scale_factors[0] / scale_factors[1]
             cur_scale_factor *= incremental_scale
-            mask = interpolate(mask, scale_factor=incremental_scale)
+            mask = interpolate2d(
+                mask, scale_factors=torch.tensor([[incremental_scale]])
+            ).squeeze(1)
             mask = (mask > 0.99).float()
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
@@ -296,7 +317,9 @@ def run(rank, options):
                     {"model": model.state_dict(), "optim": optim.state_dict()},
                     first_unique_filename(
                         os.path.join(
-                            options.save_path, "checkpoints", f"step-{global_step:06d}.pkl"
+                            options.save_path,
+                            "checkpoints",
+                            f"step-{global_step:06d}.pkl",
                         )
                     ),
                 )

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.distributions import Normal
 
-from .common import interpolate
+from .common import interpolate2d
 
 
 class ResidualBlock(torch.jit.ScriptModule):
@@ -139,7 +139,9 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Conv2d(num_latent_features, num_latent_features, kernel_size=1),
             torch.nn.SiLU(inplace=True),
             torch.nn.BatchNorm2d(num_latent_features),
-            torch.nn.Conv2d(num_latent_features, img_channels, kernel_size=1, bias=False),
+            torch.nn.Conv2d(
+                num_latent_features, img_channels, kernel_size=1, bias=False
+            ),
         )
         torch.nn.init.normal_(
             self._post_transform_mu[-1].weight,
@@ -164,9 +166,9 @@ class Model(torch.jit.ScriptModule):
             std=1e-2 / np.sqrt(num_latent_features),
         )
 
-
     def forward(self, x: torch.Tensor) -> torch.distributions.Distribution:
-        x = interpolate(x, self.incremental_scale)
+        x = interpolate2d(x, torch.tensor([[self.incremental_scale]], device=x.device))
+        x = x.squeeze(1)
         h = self._pre_transform(x)
         h = self._unet(h)
         mu = x + self._post_transform_mu(h)

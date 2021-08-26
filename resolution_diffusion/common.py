@@ -48,30 +48,26 @@ def center_align(
 
 
 @torch.jit.script
-def interpolate(
+def interpolate2d(
     x: torch.Tensor,
-    scale_factor: float,
-    mode: str = "bilinear",
-    padding_mode: str = "zeros",
-):
-    transform = (1 / scale_factor) * torch.eye(3, device=x.device)[:2]
-    grid = torch.nn.functional.affine_grid(
-        transform.expand(x.shape[0], -1, -1),
-        size=x.shape,
-        align_corners=False,
-    )
-    return torch.nn.functional.grid_sample(
-        x, grid, mode=mode, padding_mode=padding_mode, align_corners=False
-    )
-
-
-@torch.jit.script
-def interpolate_samples(
-    x: torch.Tensor,
-    scale_factors: list[float],
+    scale_factors: torch.Tensor,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
 ) -> torch.Tensor:
-    return torch.stack(
-        [interpolate(x, k, mode=mode, padding_mode=padding_mode) for k in scale_factors]
+    assert x.ndim == 4
+    assert scale_factors.ndim == 2
+
+    x, _ = torch.broadcast_tensors(x[:, None], scale_factors[..., None, None, None])
+    _, scale_factors = torch.broadcast_tensors(x[:, :, 0, 0, 0], scale_factors)
+    transform = (1 / scale_factors[..., None, None]) * torch.eye(3, device=x.device)[:2]
+
+    x_ = x.flatten(0, 1)
+    transform_ = transform.flatten(0, 1)
+    grid = torch.nn.functional.affine_grid(
+        transform_, size=x_.shape, align_corners=False
     )
+    x_ = torch.nn.functional.grid_sample(
+        x_, grid, mode=mode, padding_mode=padding_mode, align_corners=False
+    )
+
+    return x_.reshape_as(x)
