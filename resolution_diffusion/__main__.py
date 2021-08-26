@@ -284,7 +284,8 @@ def run(rank, options):
             value=0.0,
         )
         cur_scale_factor = 1.0
-        while cur_scale_factor < 2.0:
+        cur_mask = mask
+        while not cur_mask.bool().all():
             incremental_scale = scale_factors[0] / scale_factors[1]
             cur_scale_factor *= incremental_scale
             cur_mask = interpolate2d(
