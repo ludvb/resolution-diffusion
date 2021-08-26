@@ -188,7 +188,6 @@ def run(rank, options):
         data_masks = interpolate_samples(
             data_masks, scale_factors[:-1], padding_mode="zeros"
         )
-        data_masks = (data_masks > 0.99).float()
 
         y = model(x[1:].reshape(-1, *x.shape[2:]))
         lp = y.log_prob(x[:-1].reshape(-1, *x.shape[2:])).reshape_as(data_masks)
