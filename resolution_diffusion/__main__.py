@@ -27,6 +27,7 @@ def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--checkpoint", type=str)
     argparser.add_argument("--learning-rate", type=float, default=1e-4)
+    argparser.add_argument("--grad-clip", type=float)
     argparser.add_argument("--incremental-scale", type=float, default=1.25)
     argparser.add_argument("--dataset", type=str, default="MNIST")
     argparser.add_argument("--batch-size", type=int, default=32)
@@ -211,6 +212,10 @@ def run(rank, options):
 
         optim.zero_grad()
         loss.backward()
+        if options.grad_clip:
+            torch.nn.utils.clip_grad.clip_grad_norm_(
+                model.parameters(), options.grad_clip
+            )
         optim.step()
 
         torch.distributed.all_reduce(loss)
