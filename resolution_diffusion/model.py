@@ -9,10 +9,10 @@ class ResidualBlock(torch.jit.ScriptModule):
     def __init__(self, num_features: int):
         super().__init__()
         self._forward = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(num_features),
+            torch.nn.GroupNorm(32, num_features),
             torch.nn.SiLU(inplace=True),
             torch.nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(num_features),
+            torch.nn.GroupNorm(32, num_features),
             torch.nn.SiLU(inplace=True),
             torch.nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
         )
@@ -24,7 +24,7 @@ class ResidualBlock(torch.jit.ScriptModule):
 class SelfAttentionBlock(torch.jit.ScriptModule):
     def __init__(self, num_features: int, num_latent_features: int):
         super().__init__()
-        self.norm = torch.nn.BatchNorm2d(num_features)
+        self.norm = torch.nn.GroupNorm(32, num_features)
         self.proj_q = torch.nn.Conv2d(num_features, num_latent_features, kernel_size=1)
         self.proj_k = torch.nn.Conv2d(num_features, num_latent_features, kernel_size=1)
         self.proj_v = torch.nn.Conv2d(num_features, num_latent_features, kernel_size=1)
@@ -135,10 +135,10 @@ class Model(torch.jit.ScriptModule):
             torch.nn.Dropout2d(inplace=True),
         )
         self._post_transform_mu = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.GroupNorm(32, num_latent_features),
             torch.nn.Conv2d(num_latent_features, num_latent_features, kernel_size=1),
             torch.nn.SiLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.GroupNorm(32, num_latent_features),
             torch.nn.Conv2d(num_latent_features, img_channels, kernel_size=1, bias=False),
         )
         torch.nn.init.normal_(
@@ -147,10 +147,10 @@ class Model(torch.jit.ScriptModule):
             std=1e-2 / np.sqrt(num_latent_features),
         )
         self._post_transform_sd = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.GroupNorm(32, num_latent_features),
             torch.nn.Conv2d(num_latent_features, num_latent_features, kernel_size=1),
             torch.nn.SiLU(inplace=True),
-            torch.nn.BatchNorm2d(num_latent_features),
+            torch.nn.GroupNorm(32, num_latent_features),
             torch.nn.Conv2d(num_latent_features, img_channels, kernel_size=1),
             torch.nn.Softplus(),
         )
