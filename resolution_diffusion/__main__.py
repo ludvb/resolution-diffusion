@@ -313,7 +313,7 @@ def run(rank, options):
 
         if progress:
             if batch_number == 0:
-                progress.clear()
+                print("")
                 progress.reset()
             progress.update()
             progress.set_description(f"LOSS = {np.mean(losses):.2e}")
