@@ -30,7 +30,7 @@ def sampling(
     )
 
     samples = [samples_interp.reshape(-1, *samples_interp.shape[-3:])]
-    for mask in samples_mask[:, :-1].transpose(0, 1):
+    for mask in samples_mask[:, 1:].transpose(0, 1):
         with torch.no_grad():
             x = model(samples[-1].to(device)).sample().cpu()
         x = x.clamp(-1.0, 1.0)
