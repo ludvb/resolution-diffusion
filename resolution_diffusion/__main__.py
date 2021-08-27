@@ -213,7 +213,6 @@ def run(rank, options):
             scale_factors[scale_factors_idxs - 1].unsqueeze(1).to(x),
             padding_mode="zeros",
         ).squeeze(1)
-        data_masks = (data_masks > 0.99).float()
 
         y = model(x_src)
         lp = y.log_prob(x_trg).reshape_as(data_masks)
@@ -254,7 +253,6 @@ def run(rank, options):
             scale_factors.unsqueeze(0),
             padding_mode="zeros",
         )
-        epdf_masks = (epdf_masks > 0.99).bool()
 
         sample_idxs = np.random.choice(epdf_interp.size(0), size=81)
 
@@ -264,7 +262,7 @@ def run(rank, options):
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~mask] = 0.0
+            x = x * mask
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
@@ -294,7 +292,7 @@ def run(rank, options):
             with torch.no_grad():
                 x = model(samples[-1].to(device)).sample().cpu()
             x = x.clamp(-1.0, 1.0)
-            x[~mask.bool()] = 0.0
+            x = x * mask
             samples.append(x)
         samples = torch.stack(samples)
         samples = (samples + 1.0) / 2
