@@ -299,6 +299,7 @@ def run(rank, options):
         samples = samples[
             torch.linspace(0, samples.shape[0] - 1, 10).round().long().unique()
         ]
+        samples = torch.cat([samples, epdf_interp[sample_idxs, :1].transpose(0, 1)])
         if summary_writer:
             summary_writer.add_image(
                 "samples/super-resolution",
