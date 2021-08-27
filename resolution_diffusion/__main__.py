@@ -83,7 +83,7 @@ def run_training(rank, options):
         logging.basicConfig(
             filename=os.path.join(options.save_path, "log"),
             level=logging.WARNING,
-            format="[%(asctime)s]  $(process)d  (%(levelname)s)  %(message)s",
+            format="[%(asctime)s]  %(process)d  (%(levelname)s)  %(message)s",
             encoding="utf-8",
         )
 
