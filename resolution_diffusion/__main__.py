@@ -259,23 +259,54 @@ def run_training(rank, options):
             np.random.seed(0)
             torch.manual_seed(0)
 
-            samples = viz.sampling(model, incremental_scale, dataset, device)
+            sampling, sampling_scale_factors = viz.sampling(
+                model, incremental_scale, dataset, device
+            )
+            sampling_frames = viz.make_animation_frames(
+                sampling, sampling_scale_factors
+            )
+            sampling = sampling[
+                torch.linspace(0, sampling.shape[0] - 1, 10).round().long().unique()
+            ]
+            sampling = (sampling + 1.0) / 2
             if summary_writer:
                 summary_writer.add_image(
-                    "samples/generative",
+                    "sampling/generative",
                     make_grid(
-                        samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
-                        nrow=samples.shape[0],
+                        sampling.transpose(0, 1).reshape(-1, *sampling.shape[2:]),
+                        nrow=sampling.shape[0],
                     ),
                     global_step=global_step,
                 )
+                summary_writer.add_video(
+                    "sampling/generative/video",
+                    sampling_frames.transpose(0, 1),
+                    global_step=global_step,
+                )
                 summary_writer.add_scalar(
-                    "samples/generative/inception-score",
-                    inception_score(samples[-1], dataset),
+                    "sampling/generative/inception-score",
+                    inception_score(sampling[-1], dataset),
                     global_step=global_step,
                 )
 
-            superres = viz.super_resolution(model, incremental_scale, dataset, device)
+            superres, superres_scale_factors, superres_ref = viz.super_resolution(
+                model, incremental_scale, dataset, device
+            )
+            superres_frames = viz.make_animation_frames(
+                superres, superres_scale_factors
+            )
+            superres = torch.cat(
+                [
+                    superres[
+                        torch.linspace(0, superres.shape[0] - 1, 10)
+                        .round()
+                        .long()
+                        .unique()
+                    ],
+                    superres_ref.unsqueeze(0),
+                ]
+            )
+            superres = (superres + 1.0) / 2
             if summary_writer:
                 summary_writer.add_image(
                     "samples/super-resolution",
@@ -283,6 +314,11 @@ def run_training(rank, options):
                         superres.transpose(0, 1).reshape(-1, *superres.shape[2:]),
                         nrow=superres.shape[0],
                     ),
+                    global_step=global_step,
+                )
+                summary_writer.add_video(
+                    "samples/super-resolution/video",
+                    superres_frames.transpose(0, 1),
                     global_step=global_step,
                 )
 
