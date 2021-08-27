@@ -1,9 +1,7 @@
-import operator
 import os
 import itertools as it
-from functools import reduce
-from typing import Any
 
+import numpy as np
 import torch
 
 
@@ -19,6 +17,17 @@ def first_unique_filename(x):
 
 def add_noise(img: torch.Tensor, scale: float = 0.05) -> torch.Tensor:
     return ((1 - 2 * scale) * img + 0.05 * torch.randn_like(img)).clamp(-1.0, 1.0)
+
+
+def compute_scale_factors(dataset: torch.utils.data.Dataset, incremental_scale: float):
+    incremental_scale = incremental_scale
+    img_shape = dataset[0][0].shape[1:]
+    data_dim = np.max(img_shape)
+    num_steps = int(np.ceil(np.log(data_dim) / np.log(incremental_scale)))
+    scale_factors = torch.tensor(
+        [1 / incremental_scale ** k for k in range(0, num_steps)]
+    )
+    return scale_factors
 
 
 @torch.jit.script

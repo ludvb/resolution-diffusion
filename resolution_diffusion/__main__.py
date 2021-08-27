@@ -16,7 +16,13 @@ from torchvision.datasets import CIFAR10, MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-from .common import add_noise, first_unique_filename, interpolate2d
+from . import visualization as viz
+from .common import (
+    add_noise,
+    first_unique_filename,
+    compute_scale_factors,
+    interpolate2d,
+)
 from .evaluation import inception_score
 from .model import Model
 
@@ -53,12 +59,12 @@ def main():
     os.environ["MASTER_ADDR"] = options.mp_host
     os.environ["MASTER_PORT"] = options.mp_port
     if world_size == 1:
-        run(0, options)
+        run_training(0, options)
     else:
-        torch.multiprocessing.spawn(run, nprocs=world_size, args=(options,))
+        torch.multiprocessing.spawn(run_training, nprocs=world_size, args=(options,))
 
 
-def run(rank, options):
+def run_training(rank, options):
     torch.distributed.init_process_group(
         backend="nccl",
         world_size=world_size,
@@ -151,12 +157,8 @@ def run(rank, options):
     )
 
     incremental_scale = options.incremental_scale
-    img_channels, *img_shape = next(iter(dataloader))[0].shape[1:]
-    data_dim = np.max(img_shape)
-    num_steps = int(np.ceil(np.log(data_dim) / np.log(incremental_scale)))
-    scale_factors = torch.tensor(
-        [1 / incremental_scale ** k for k in range(0, num_steps)]
-    )
+    img_channels = dataset[0][0].shape[0]
+    scale_factors = compute_scale_factors(dataset, incremental_scale)
 
     torch.manual_seed(options.seed)
     model = Model(
@@ -233,85 +235,6 @@ def run(rank, options):
 
         return loss.item()
 
-    def create_visualizations(global_step):
-        model.eval()
-        rng_state = torch.get_rng_state()
-        np.random.seed(0)
-        torch.manual_seed(0)
-
-        viz_samples = torch.stack(
-            [
-                dataloader.dataset[i][0]
-                for i in np.random.choice(len(dataloader), size=1024)
-            ]
-        )
-        epdf_interp = interpolate2d(
-            viz_samples, scale_factors.unsqueeze(0), padding_mode="zeros"
-        )
-        epdf_masks = interpolate2d(
-            torch.ones_like(viz_samples),
-            scale_factors.unsqueeze(0),
-            padding_mode="zeros",
-        )
-
-        sample_idxs = np.random.choice(epdf_interp.size(0), size=81)
-
-        # Sampling
-        samples = [epdf_interp[sample_idxs, -1:].reshape(-1, *epdf_interp.shape[-3:])]
-        for mask in epdf_masks[sample_idxs, :-1].transpose(0, 1).flip(0):
-            with torch.no_grad():
-                x = model(samples[-1].to(device)).sample().cpu()
-            x = x.clamp(-1.0, 1.0)
-            x = x * mask
-            samples.append(x)
-        samples = torch.stack(samples)
-        samples = (samples + 1.0) / 2
-        samples = samples[
-            torch.linspace(0, samples.shape[0] - 1, 10).round().long().unique()
-        ]
-        if summary_writer:
-            summary_writer.add_image(
-                "samples/generative",
-                make_grid(
-                    samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
-                    nrow=samples.shape[0],
-                ),
-                global_step=global_step,
-            )
-            summary_writer.add_scalar(
-                "samples/generative/inception-score",
-                inception_score(samples[-1], dataset),
-                global_step=global_step,
-            )
-
-        # Super resolution
-        starting_rank = int(np.ceil(np.log(4) / np.log(incremental_scale)))
-        samples = [epdf_interp[sample_idxs, starting_rank]]
-        masks = [epdf_masks[sample_idxs, i] for i in range(0, starting_rank)]
-        for mask in masks[::-1]:
-            with torch.no_grad():
-                x = model(samples[-1].to(device)).sample().cpu()
-            x = x.clamp(-1.0, 1.0)
-            x = x * mask
-            samples.append(x)
-        samples = torch.stack(samples)
-        samples = (samples + 1.0) / 2
-        samples = samples[
-            torch.linspace(0, samples.shape[0] - 1, 10).round().long().unique()
-        ]
-        samples = torch.cat([samples, epdf_interp[sample_idxs, :1].transpose(0, 1)])
-        if summary_writer:
-            summary_writer.add_image(
-                "samples/super-resolution",
-                make_grid(
-                    samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
-                    nrow=samples.shape[0],
-                ),
-                global_step=global_step,
-            )
-
-        torch.set_rng_state(rng_state)
-
     progress = tqdm(total=len(dataloader)) if rank == 0 else None
     losses = []
     for global_step, (epoch, batch_number, x) in enumerate(generate_batches()):
@@ -330,7 +253,41 @@ def run(rank, options):
                 )
 
         if global_step % options.viz_interval == 0:
-            create_visualizations(global_step=global_step)
+            model.eval()
+            torch_rng_state = torch.get_rng_state()
+            np_rng_state = np.random.get_state()
+            np.random.seed(0)
+            torch.manual_seed(0)
+
+            samples = viz.sampling(model, incremental_scale, dataset, device)
+            if summary_writer:
+                summary_writer.add_image(
+                    "samples/generative",
+                    make_grid(
+                        samples.transpose(0, 1).reshape(-1, *samples.shape[2:]),
+                        nrow=samples.shape[0],
+                    ),
+                    global_step=global_step,
+                )
+                summary_writer.add_scalar(
+                    "samples/generative/inception-score",
+                    inception_score(samples[-1], dataset),
+                    global_step=global_step,
+                )
+
+            superres = viz.super_resolution(model, incremental_scale, dataset, device)
+            if summary_writer:
+                summary_writer.add_image(
+                    "samples/super-resolution",
+                    make_grid(
+                        superres.transpose(0, 1).reshape(-1, *superres.shape[2:]),
+                        nrow=superres.shape[0],
+                    ),
+                    global_step=global_step,
+                )
+
+            torch.set_rng_state(torch_rng_state)
+            np.random.set_state(np_rng_state)
 
         loss = step(x, global_step=global_step)
 
