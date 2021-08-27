@@ -262,13 +262,13 @@ def run_training(rank, options):
             sampling, sampling_scale_factors = viz.sampling(
                 model, incremental_scale, dataset, device
             )
+            sampling = (sampling + 1.0) / 2
             sampling_frames = viz.make_animation_frames(
                 sampling, sampling_scale_factors
             )
             sampling = sampling[
                 torch.linspace(0, sampling.shape[0] - 1, 10).round().long().unique()
             ]
-            sampling = (sampling + 1.0) / 2
             if summary_writer:
                 summary_writer.add_image(
                     "sampling/generative",
@@ -292,6 +292,7 @@ def run_training(rank, options):
             superres, superres_scale_factors, superres_ref = viz.super_resolution(
                 model, incremental_scale, dataset, device
             )
+            superres = (superres + 1.0) / 2
             superres_frames = viz.make_animation_frames(
                 superres, superres_scale_factors
             )
@@ -306,7 +307,6 @@ def run_training(rank, options):
                     superres_ref.unsqueeze(0),
                 ]
             )
-            superres = (superres + 1.0) / 2
             if summary_writer:
                 summary_writer.add_image(
                     "samples/super-resolution",
