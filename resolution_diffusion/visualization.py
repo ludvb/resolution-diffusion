@@ -92,9 +92,9 @@ def make_animation_frames(
 
 def make_animation_clip(
     frames: torch.Tensor,
-    duration: int,
-    retain_first_frame_for: int = 0,
-    retain_last_frame_for: int = 0,
+    animation_duration: int = 5,
+    retain_first_frame_for: int = 1,
+    retain_last_frame_for: int = 1,
 ) -> VideoClip:
     if frames.shape[0] == 1:
         frames = frames.repeat_interleave(3, dim=1)
@@ -103,11 +103,7 @@ def make_animation_clip(
     frames = frames.cpu().numpy().astype(np.uint8)
 
     def make_frame(t):
-        t = (
-            (t - retain_first_frame_for)
-            / (duration - retain_first_frame_for - retain_last_frame_for)
-            * frames.shape[0]
-        )
+        t = frames.shape[0] * (t - retain_first_frame_for) / animation_duration
         if t < 0:
             return frames[0]
         if t > frames.shape[0] - 1:
@@ -117,4 +113,7 @@ def make_animation_clip(
         w = np.sin(np.pi / 2 * (t - t1)) ** 2
         return (1 - w) * frames[t1] + w * frames[t2]
 
-    return VideoClip(make_frame, duration=frames.shape[0] + 1)
+    return VideoClip(
+        make_frame,
+        duration=animation_duration + retain_first_frame_for + retain_last_frame_for,
+    )

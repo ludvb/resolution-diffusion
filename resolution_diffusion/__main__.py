@@ -8,21 +8,19 @@ from datetime import datetime
 
 import numpy as np
 import torch
-import torchvision.transforms as image_transforms
 from torch.distributed.optim import ZeroRedundancyOptimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torchvision.datasets import CIFAR10, MNIST
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
 from . import visualization as viz
 from .common import (
-    add_noise,
     first_unique_filename,
     compute_scale_factors,
     interpolate2d,
 )
+from .dataset import load_dataset
 from .evaluation import inception_score
 from .model import Model
 
@@ -100,48 +98,7 @@ def run_training(rank, options):
     logging.info(" ".join(sys.argv))
     logging.info("Options parsed as: " + str(options))
 
-    if options.dataset.lower() == "mnist":
-        dataset = MNIST(
-            "./data",
-            train=True,
-            download=True,
-            transform=image_transforms.Compose(
-                [
-                    image_transforms.ToTensor(),
-                    image_transforms.Normalize(
-                        mean=torch.tensor([0.5]), std=torch.tensor([0.5])
-                    ),
-                ]
-                + (
-                    [
-                        add_noise,
-                        # ^ Add isotropic Gaussian noise to make the data manifold
-                        #   slightly smoother. MNIST images have many extreme values
-                        #   (0 or 1) that otherwise may make training more difficult.
-                    ]
-                    if options.add_dataset_noise
-                    else []
-                )
-            ),
-        )
-    elif options.dataset.lower() == "cifar10":
-        dataset = CIFAR10(
-            "./data",
-            train=True,
-            download=True,
-            transform=image_transforms.Compose(
-                [
-                    image_transforms.ToTensor(),
-                    image_transforms.Normalize(
-                        mean=torch.tensor([0.5]), std=torch.tensor([0.5])
-                    ),
-                ]
-                + ([add_noise] if options.add_dataset_noise else [])
-            ),
-        )
-    else:
-        raise RuntimeError(f'Unknown dataset "{options.dataset}"')
-
+    dataset = load_dataset(options.dataset, options.add_dataset_noise)
     dataloader = DataLoader(
         dataset,
         batch_size=options.batch_size,

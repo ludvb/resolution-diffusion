@@ -12,12 +12,14 @@ torchvision = "^0.10.0"
 tqdm = "^4.62.1"
 moviepy = "^1.0.3"
 scipy = "^1.7.1"
+imageio = "^2.9.0"
 
 [tool.poetry.dev-dependencies]
 ipdb = "^0.13.9"
 
 [tool.poetry.scripts]
 resolution-diffusion = 'resolution_diffusion.__main__:main'
+resolution-diffusion-figures = 'resolution_diffusion.make_figures:main'
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

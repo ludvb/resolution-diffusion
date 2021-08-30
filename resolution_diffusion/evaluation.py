@@ -24,8 +24,8 @@ class MLPClassifier(torch.nn.Module):
         return self._forward(x)
 
 
-def dataset_hash(dataset: torch.utils.data.Dataset) -> int:
-    return int(sum([hash(x) for x in dataset.resources]) % 1e9)
+def dataset_hash(dataset: torch.utils.data.Dataset) -> str:
+    return hex(sum([int(x, 16) for _, x in dataset.resources]))
 
 
 def get_mlp(dataset: torch.utils.data.Dataset, device: Optional[torch.device]):
@@ -197,6 +197,6 @@ def inception_score(
         with torch.no_grad():
             ps_gen = model(imgs)
         kl = ps_gen.exp() * (ps_gen - ps_gen.logsumexp(0) + np.log(ps_gen.shape[0]))
-        return kl.sum(1).mean().item()
+        return kl.sum(1).mean().exp().item()
 
     return _compute_is(imgs)
